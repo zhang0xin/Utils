@@ -7,10 +7,23 @@ using System.Web.UI.WebControls;
 
 namespace Utils.WebControls
 {
+  public enum DisplayType
+  { DateTime=0, Date=2 }
+  [ValidationProperty("Value")]
   public class DateTimeSelector : WebControlBase, INamingContainer
   {
     TextBox tbDateTime;
-    public DateTime? Value  
+    public DisplayType Type
+    {
+      get { return ViewState["Type"] == null ? DisplayType.Date : (DisplayType)ViewState["Type"]; }
+      set { ViewState["Type"] = value; }
+    }
+    public int Width
+    {
+      get { return ViewState["Width"] == null ? -1 : (int)ViewState["Width"]; }
+      set { ViewState["Width"] = value; }
+    }
+    public DateTime? Value
     {
       get
       {
@@ -28,7 +41,10 @@ namespace Utils.WebControls
       {
         EnsureChildControls();
         if (value.HasValue)
-          tbDateTime.Text = value.Value.ToShortDateString();
+        {
+          if (Type == DisplayType.Date) tbDateTime.Text = value.Value.ToString("yyyy-MM-dd");
+          else if (Type == DisplayType.DateTime) tbDateTime.Text = value.Value.ToString("yyyy-MM-dd HH:mm");
+        }
         else
           tbDateTime.Text = "";
       }
@@ -44,6 +60,12 @@ namespace Utils.WebControls
         Value = null;
       }
     }
+    public bool AutoPostBack
+    {
+      get { EnsureChildControls(); return tbDateTime.AutoPostBack; }
+      set { EnsureChildControls(); tbDateTime.AutoPostBack = value; }
+    }
+
     protected override void CreateChildControls()
     {
       Controls.Clear();
@@ -55,22 +77,33 @@ namespace Utils.WebControls
     protected override void OnPreRender(EventArgs e)
     {
       base.OnPreRender(e);
-      Page.ClientScript.RegisterStartupScript(GetType(), "formdate",
-       @"
-$('.form_date').datetimepicker({
+      Page.ClientScript.RegisterStartupScript(GetType(), ClientID,
+      string.Format(@"
+$('#{0}').datetimepicker({{
     language: 'zh-CN',
     weekStart: 1,
     todayBtn: 1,
     autoclose: 1,
     todayHighlight: 1,
     startView: 2,
-    minView: 2,
-    forceParse: 0
-});", true);
+    minView: {1},
+    forceParse: 0,
+    showMeridian: 0
+}});", ClientID, (int)Type), true);
     }
     protected override void Render(HtmlTextWriter writer)
     {
-      writer.Write("<div class='input-group date form_date' data-date='' data-date-format='yyyy-mm-dd' data-link-format='yyyy-mm-dd'>");
+      string format = "";
+      if (Type == DisplayType.Date) format = "yyyy-mm-dd";
+      else if (Type == DisplayType.DateTime) format = "yyyy-mm-dd hh:ii";
+
+      string style = "";
+      if (Width != -1)
+        style = string.Format("style='width: {0}px;'", Width);
+      writer.Write(string.Format(
+        "<div id='{0}' class='input-group date' data-date='' data-date-format='{1}' data-link-format='{1}' {2}>", 
+        ClientID, format, style
+        ));
       tbDateTime.RenderControl(writer);
       writer.Renderer("span", "class", "input-group-addon").Render(delegate()
       {

@@ -13,9 +13,8 @@ namespace Utils.WebControls
   [ValidationProperty("Value")]
   public class TableSelector : WebControlBase
   {
-    DBHelper dbh = new DBHelper();
+    DBHelper dbh = DBHelper.Singleton;
     TextBox _tbText;
-    HiddenField _hfValue;
     LinkButton _btnSelect;
     LinkButton _btnClear;
     GridView _gvMain;
@@ -30,29 +29,13 @@ namespace Utils.WebControls
     #region Properties
     public string ValueField
     {
-      get { EnsureChildControls(); return _gvMain.DataKeyNames[0]; }
-      set
-      {
-        EnsureChildControls();
-        if (_gvMain.DataKeyNames == null || _gvMain.DataKeyNames.Length == 0)
-          _gvMain.DataKeyNames = new string[] { value };
-        else
-          _gvMain.DataKeyNames[0] = value;
-      }
+      get { return ViewState["ValueField"] == null ? "" : ViewState["ValueField"] as string; }
+      set { ViewState["ValueField"] = value; }
     }
     public string TextField
     {
-      get { EnsureChildControls(); return _gvMain.DataKeyNames[1]; }
-      set
-      {
-        EnsureChildControls();
-        if (_gvMain.DataKeyNames == null || _gvMain.DataKeyNames.Length == 0)
-          _gvMain.DataKeyNames = new string[] { "", value };
-        else if (_gvMain.DataKeyNames.Length == 1)
-          _gvMain.DataKeyNames = new string[] { _gvMain.DataKeyNames[0], value };
-        else
-          _gvMain.DataKeyNames[1] = value;
-      }
+      get { return ViewState["TextField"] == null ? "" : ViewState["TextField"] as string; }
+      set { ViewState["TextField"] = value; }
     }
     public string QueryFields
     {
@@ -66,7 +49,7 @@ namespace Utils.WebControls
     }
     public string Value
     {
-      get { EnsureChildControls(); return _hfValue.Value; }
+      get { return ViewState["ValueField"] == null ? "" : ViewState["ValueField"] as string; }
       set
       {
         EnsureChildControls();
@@ -74,9 +57,9 @@ namespace Utils.WebControls
         DataRow[] rows = dt.Select(ValueField + " = '" + value+"'");
         if (rows.Length > 0)
         {
-          _hfValue.Value = rows[0][ValueField]+"";
+          ViewState["ValueField"] = rows[0][ValueField]+"";
           if (string.IsNullOrWhiteSpace(TextField))
-            _tbText.Text = _hfValue.Value;
+            _tbText.Text = ViewState["ValueField"] as string;
           else
             _tbText.Text = rows[0][TextField] + "";
         }
@@ -107,7 +90,7 @@ namespace Utils.WebControls
         (Events[ValueChangedKey] as EventHandler)(this, null);
     }
     #endregion
-    
+
     public void BindGrid()
     {
       _gvMain.DataSource = dbh.GetTable(
@@ -127,10 +110,10 @@ namespace Utils.WebControls
     }
     protected override void Render(HtmlTextWriter writer)
     {
-      writer.RenderWithClass("div", "input-group", delegate()
+      writer.RenderWithIdClass("div", this.ClientID, "input-group", delegate()
       {
         _tbText.RenderControl(writer);
-        _hfValue.RenderControl(writer);
+        //_hfValue.RenderControl(writer);
         writer.RenderWithClass("span", "input-group-btn", delegate()
         {
           _btnClear.RenderControl(writer);
@@ -193,10 +176,9 @@ namespace Utils.WebControls
 
       _tbText = new TextBox();
       _tbText.CssClass = "form-control";
+      _tbText.ReadOnly = true;
       Controls.Add(_tbText);
 
-      _hfValue = new HiddenField();
-      Controls.Add(_hfValue);
 
       _btnClear = new LinkButton();
       _btnClear.CssClass = "btn btn-default";
@@ -205,7 +187,7 @@ namespace Utils.WebControls
       _btnClear.Click += delegate(object sender, EventArgs args)
       {
         _tbText.Text = "";
-        _hfValue.Value = "";
+        ViewState["ValueField"] = "";
       };
       Controls.Add(_btnClear);
 
@@ -244,7 +226,7 @@ namespace Utils.WebControls
       _gvMain.SelectedIndexChanged += delegate(object sender, EventArgs e)
       {
         string selectedValue = _gvMain.DataKeys[_gvMain.SelectedIndex][0].ToString();
-        _hfValue.Value = selectedValue;
+        ViewState["ValueField"] = selectedValue;
         if (_gvMain.DataKeys[_gvMain.SelectedIndex].Values.Count > 1)
           _tbText.Text = _gvMain.DataKeys[_gvMain.SelectedIndex][1].ToString();
         else
@@ -252,6 +234,10 @@ namespace Utils.WebControls
         OnValueChanged();
         showDialog = false;
       };
+      if (!string.IsNullOrWhiteSpace(ValueField) && !string.IsNullOrWhiteSpace(TextField))
+        _gvMain.DataKeyNames = new string[] { ValueField, TextField };
+      else if (!string.IsNullOrWhiteSpace(ValueField))
+        _gvMain.DataKeyNames = new string[] { ValueField };
       Controls.Add(_gvMain);
 
       QueryFieldsEach(delegate(string field)

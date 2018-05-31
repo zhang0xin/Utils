@@ -16,7 +16,7 @@ namespace Utils.WebControls
   public enum LayoutType { Grid, Inline };
   public class QueryForm : WebControlBase, INamingContainer
   {
-    DBHelper dbh = new DBHelper(); 
+    DBHelper dbh = DBHelper.Singleton; 
     #region Properties
     public LayoutType Layout
     {
@@ -237,7 +237,7 @@ namespace Utils.WebControls
   #region QueryFields
   public abstract class QueryField 
   {
-    protected DBHelper dbh = new DBHelper(); 
+    protected DBHelper dbh = DBHelper.Singleton; 
     public QueryField() : this("", "")
     { }
     public QueryField(string name, string label=null)

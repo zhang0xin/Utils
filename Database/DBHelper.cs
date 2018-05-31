@@ -4,12 +4,33 @@ using System.Configuration;
 using System.Data;
 using System.Data.OracleClient;
 using System.Linq;
+using System.Threading;
 using System.Web;
 
 namespace Utils.Database
 {
   public class DBHelper
   {
+    #region Singleton
+    public static volatile DBHelper _instance = null;
+    private static readonly object instanceLocker = new object();  
+    public static DBHelper Singleton
+    {
+      get
+      {
+        lock (instanceLocker)
+        {
+          if (_instance == null) _instance = new DBHelper();
+        }
+        return _instance;
+      }
+    }
+    private DBHelper() { }
+    #endregion
+
+    #region Events
+    public event Action<string, Dictionary<string, object>> DataChanged;
+    #endregion
 
     #region Connection
     public string ConnectionString
@@ -43,6 +64,8 @@ namespace Utils.Database
       });
       string sql = string.Format("insert into {0} ({1}) values ({2})", tableName, fields, values); ;
       Executor(trans, sql, parameters).Execute();
+
+      if (DataChanged != null) DataChanged(sql, parameters);
     }
     #endregion
 
@@ -78,6 +101,8 @@ namespace Utils.Database
       });
       string sql = string.Format("update {0} set {1} where {2}=:{2}", tableName, strSet, idField);
       Executor(CurrentTransaction, sql, parameters).Execute();
+      
+      if (DataChanged != null) DataChanged(sql, parameters);
     }
     #endregion
 
@@ -88,37 +113,51 @@ namespace Utils.Database
     }
     public void DeleteWhere(string tableName, string whereCondition)
     {
-      Executor(string.Format("delete from {0} where {1}", tableName, whereCondition)).Execute();
+      string sql = string.Format("delete from {0} where {1}", tableName, whereCondition);
+      Executor(sql).Execute();
+
+      if (DataChanged != null) DataChanged(sql, null);
     }
     public void Delete(OracleTransaction trans, string tableName, object id)
     {
-      Executor(trans, string.Format("delete from {0} where id = :0", tableName), id).Execute();
+      string sql = string.Format("delete from {0} where id = :0", tableName);
+      Executor(trans, sql, id).Execute();
+
+      if (DataChanged != null) DataChanged(sql, null);
+
     }
     #endregion
 
     #region Transaction
-    OracleTransaction _transaction;
+    Stack<OracleTransaction> _transactions = new Stack<OracleTransaction>();
+    private static readonly object transactionLocker = new object();  
     public OracleTransaction CurrentTransaction
     {
-      get { return _transaction; }
+      get 
+      { 
+        if (_transactions.Count == 0) return null; 
+        return _transactions.Peek(); 
+      }
     }
     public void BeginTransaction()
     {
+      Monitor.Enter(transactionLocker);
       OracleConnection conn = CreateConnection();
       conn.Open();
-      _transaction = conn.BeginTransaction();
+      _transactions.Push(conn.BeginTransaction());
     }
     public void EndTransaction()
     {
-      OracleConnection conn = _transaction.Connection;
-      _transaction.Commit();
-      _transaction = null;
+      OracleConnection conn = CurrentTransaction.Connection;
+      CurrentTransaction.Commit();
+      _transactions.Pop();
       conn.Close();
+      Monitor.Exit(transactionLocker);
     }
     public void Transaction(Action<OracleTransaction> execute)
     {
       BeginTransaction();
-      execute(_transaction);
+      execute(CurrentTransaction);
       EndTransaction();
     }
     #endregion
@@ -138,18 +177,18 @@ namespace Utils.Database
       if (table.Rows.Count > 0) return table.Rows[0];
       return null;
     }
-    public DataTable GetPageWithPageIndex(string sql, int index, int pageSize, out int itemCount)
+    public DataTable GetPageWithPageIndex(string sql, int pageIndex, int pageSize, out int itemCount)
     {
-      return GetPage(sql, (index - 1) * pageSize, pageSize, out itemCount);
+      return GetPage(sql, (pageIndex - 1) * pageSize + 1, pageSize, out itemCount);
     }
-    public DataTable GetPage(string sql, int index, int pageSize, out int itemCount)
+    public DataTable GetPage(string sql, int index, int pageSize, out int itemCount)//index 从1开始
     {
       itemCount = Count(sql);
       return GetPage(sql, index, pageSize);
     }
-    public DataTable GetPageWithPageIndex(string sql, int index, int pageSize)
+    public DataTable GetPageWithPageIndex(string sql, int pageIndex, int pageSize)
     {
-      return GetPage(sql, (index - 1) * pageSize + 1, pageSize);
+      return GetPage(sql, (pageIndex - 1) * pageSize + 1, pageSize);
     }
     public DataTable GetPage(string sql, int index, int pageSize)
     {
@@ -358,6 +397,10 @@ namespace Utils.Database
       {
         command.ExecuteNonQuery();
       });
+    }
+    public void Log(string actioncd, string userId)
+    {
+
     }
     void EnsureConnected(Action execute)
     {
